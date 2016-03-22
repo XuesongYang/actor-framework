@@ -253,6 +253,10 @@ public:
   // Config parameters of the OpenCL module.
   std::string opencl_device_ids;
 
+  // Config parameters of Replication module.
+  std::string replication_hosts;
+  uint16_t replicator_port;
+
   value_factory_string_map value_factories_by_name;
   value_factory_rtti_map value_factories_by_rtti;
   portable_name_map type_names_by_rtti;

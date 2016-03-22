@@ -227,6 +227,9 @@ actor_system::actor_system(actor_system_config* ptr, bool owns_ptr)
   auto& clptr = modules_[module::opencl_manager];
   if (clptr)
     opencl_manager_ = reinterpret_cast<opencl::manager*>(clptr->subtype_ptr());
+  auto& rptr = modules_[module::replicator];
+  if (rptr)
+    replicator_ = reinterpret_cast<replication::replicator*>(rptr->subtype_ptr());
   auto& pptr = modules_[module::riac_probe];
   if (pptr)
     probe_ = reinterpret_cast<riac::probe*>(pptr->subtype_ptr());
@@ -364,6 +367,16 @@ opencl::manager& actor_system::opencl_manager() const {
   if (! opencl_manager_)
     throw std::logic_error("cannot access opencl manager: module not loaded");
   return *opencl_manager_;
+}
+
+bool actor_system::has_replicator() const {
+  return replicator_ != nullptr;
+}
+
+replication::replicator& actor_system::replicator() const {
+  if (! replicator_)
+   throw std::logic_error("cannot access replicator: module not loaded");
+  return *replicator_;
 }
 
 bool actor_system::has_probe() const {
