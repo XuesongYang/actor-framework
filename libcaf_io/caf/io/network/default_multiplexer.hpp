@@ -267,24 +267,29 @@ public:
     }
   };
 
-  connection_handle new_tcp_scribe(const std::string&, uint16_t) override;
+  expected<connection_handle> new_tcp_scribe(const std::string &,
+                                             uint16_t) override;
 
-  void assign_tcp_scribe(abstract_broker* ptr, connection_handle hdl) override;
+  expected<void> assign_tcp_scribe(abstract_broker *ptr,
+                                   connection_handle hdl) override;
 
-  connection_handle add_tcp_scribe(abstract_broker*, native_socket fd) override;
+  connection_handle add_tcp_scribe(abstract_broker *,
+                                   native_socket fd) override;
 
-  connection_handle add_tcp_scribe(abstract_broker*, const std::string& h,
-                                   uint16_t port) override;
+  expected<connection_handle> add_tcp_scribe(abstract_broker *,
+                                             const std::string &h,
+                                             uint16_t port) override;
 
-  std::pair<accept_handle, uint16_t>
-  new_tcp_doorman(uint16_t p, const char* in, bool rflag) override;
+  expected<std::pair<accept_handle, uint16_t>>
+  new_tcp_doorman(uint16_t p, const char *in, bool rflag) override;
 
-  void assign_tcp_doorman(abstract_broker* ptr, accept_handle hdl) override;
+  expected<void> assign_tcp_doorman(abstract_broker *ptr,
+                                    accept_handle hdl) override;
 
   accept_handle add_tcp_doorman(abstract_broker*, native_socket fd) override;
 
-  std::pair<accept_handle, uint16_t>
-  add_tcp_doorman(abstract_broker*, uint16_t, const char*, bool) override;
+  expected<std::pair<accept_handle, uint16_t>>
+  add_tcp_doorman(abstract_broker *, uint16_t, const char *, bool) override;
 
   void exec_later(resumable* ptr) override;
 
@@ -480,10 +485,11 @@ private:
   native_socket sock_;
 };
 
-native_socket new_tcp_connection(const std::string& host, uint16_t port,
-                                 optional<protocol> preferred = none);
+expected<native_socket> new_tcp_connection(const std::string& host,
+                                           uint16_t port,
+                                           optional<protocol> preferred = none);
 
-std::pair<native_socket, uint16_t>
+expected<std::pair<native_socket, uint16_t>>
 new_tcp_acceptor_impl(uint16_t port, const char* addr, bool reuse_addr);
 
 } // namespace network

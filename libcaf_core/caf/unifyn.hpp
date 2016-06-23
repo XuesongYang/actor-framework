@@ -17,50 +17,11 @@
  * http://www.boost.org/LICENSE_1_0.txt.                                      *
  ******************************************************************************/
 
-#include "caf/sec.hpp"
+#ifndef CAF_UNIFYN_HPP
+#define CAF_UNIFYN_HPP
 
-namespace caf {
+#define CAF_CONCAT_(LHS, RHS) LHS ## RHS
+#define CAF_CONCAT(LHS, RHS) CAF_CONCAT_(LHS, RHS)
+#define CAF_UNIFYN(NAME) CAF_CONCAT(NAME, __LINE__)
 
-namespace {
-
-const char* sec_strings[] = {
-  "<no-error>",
-  "unexpected_message",
-  "unexpected_response",
-  "request_receiver_down",
-  "request_timeout",
-  "no_such_group_module",
-  "no_actor_published_at_port",
-  "unexpected_actor_messaging_interface",
-  "state_not_serializable",
-  "unsupported_sys_key",
-  "unsupported_sys_message",
-  "disconnect_during_handshake",
-  "cannot_forward_to_invalid_actor",
-  "no_route_to_receiving_node",
-  "failed_to_assign_scribe_from_handle",
-  "cannot_close_invalid_port",
-  "cannot_connect_to_node",
-  "cannot_open_port",
-  "cannot_publish_invalid_actor",
-  "cannot_spawn_actor_from_arguments"
-};
-
-} // namespace <anonymous>
-
-const char* to_string(sec x) {
-  auto index = static_cast<size_t>(x);
-  if (index > static_cast<size_t>(sec::cannot_spawn_actor_from_arguments))
-    return "<unknown>";
-  return sec_strings[index];
-}
-
-error make_error(sec x) {
-  return {static_cast<uint8_t>(x), atom("system")};
-}
-
-error make_error(sec x, message context) {
-  return {static_cast<uint8_t>(x), atom("system"), std::move(context)};
-}
-
-} // namespace caf
+#endif // CAF_UNIFYN_HPP

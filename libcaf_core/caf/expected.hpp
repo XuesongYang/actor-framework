@@ -28,6 +28,7 @@
 
 #include "caf/unit.hpp"
 #include "caf/error.hpp"
+#include "caf/unifyn.hpp"
 
 namespace caf {
 
@@ -37,6 +38,10 @@ namespace caf {
 template <typename T>
 class expected {
 public:
+  // -- member types -----------------------------------------------------------
+
+  using value_type = T;
+
   // -- static member variables ------------------------------------------------
 
   /// Stores whether move construct and move assign never throw.
@@ -65,6 +70,11 @@ public:
 
   expected(const expected& other) noexcept(nothrow_copy) {
     construct(other);
+  }
+
+  template <class Code, class E = enable_if_has_make_error_t<Code>>
+  expected(Code code) : engaged_(false) {
+    new (&error_) caf::error(make_error(code));
   }
 
   expected(expected&& other) noexcept(nothrow_move) {
@@ -366,6 +376,26 @@ public:
 private:
   caf::error error_;
 };
+
+/// Assigns the value of `expr` (which must return an `expected`)
+/// to a new variable named `var` or returns the error.
+/// @relates expected
+/// @experimental
+#define CAF_EXP_RET(var, expr)                                                 \
+  auto CAF_UNIFYN(tmp_var_) = expr;                                            \
+  if (! CAF_UNIFYN(tmp_var_))                                                  \
+    return std::move(CAF_UNIFYN(tmp_var_).error());                            \
+  auto& var = *CAF_UNIFYN(tmp_var_)
+
+/// Assigns the value of `expr` (which must return an `expected`)
+/// to a new variable named `var` or throws a `std::runtime_error` on error.
+/// @relates expected
+/// @experimental
+#define CAF_EXP_THROW(var, expr)                                               \
+  auto CAF_UNIFYN(tmp_var_) = expr;                                            \
+  if (! CAF_UNIFYN(tmp_var_))                                                  \
+    throw std::runtime_error(to_string(CAF_UNIFYN(tmp_var_).error()));         \
+  auto& var = *CAF_UNIFYN(tmp_var_)
 
 } // namespace caf
 

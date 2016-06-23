@@ -23,6 +23,8 @@
 #include "caf/optional.hpp"
 #include "caf/exception.hpp"
 #include "caf/make_counted.hpp"
+#include "caf/actor_system_config.hpp"
+
 #include "caf/scheduler/abstract_coordinator.hpp"
 
 #include "caf/io/broker.hpp"
@@ -816,45 +818,55 @@ accept_handle default_multiplexer::add_tcp_doorman(abstract_broker* self,
   return ptr->hdl();
 }
 
-connection_handle default_multiplexer::new_tcp_scribe(const std::string& host,
-                                                      uint16_t port) {
+expected<connection_handle>
+default_multiplexer::new_tcp_scribe(const std::string& host, uint16_t port) {
   auto fd = new_tcp_connection(host, port);
-  return connection_handle::from_int(int64_from_native_socket(fd));
+  if (! fd)
+    return std::move(fd.error());
+  return connection_handle::from_int(int64_from_native_socket(*fd));
 }
 
-void default_multiplexer::assign_tcp_scribe(abstract_broker* self,
+expected<void> default_multiplexer::assign_tcp_scribe(abstract_broker* self,
                                             connection_handle hdl) {
   CAF_LOG_TRACE(CAF_ARG(self->id()) << CAF_ARG(hdl));
   add_tcp_scribe(self, static_cast<native_socket>(hdl.id()));
+  return unit;
 }
 
-
-connection_handle default_multiplexer::add_tcp_scribe(abstract_broker* self,
-                                                      const std::string& host,
-                                                      uint16_t port) {
+expected<connection_handle>
+default_multiplexer::add_tcp_scribe(abstract_broker* self,
+                                    const std::string& host, uint16_t port) {
   CAF_LOG_TRACE(CAF_ARG(self->id()) << CAF_ARG(host) << CAF_ARG(port));
-  return add_tcp_scribe(self, new_tcp_connection(host, port));
+  auto fd = new_tcp_connection(host, port);
+  if (! fd)
+    return std::move(fd.error());
+  return add_tcp_scribe(self, *fd);
 }
 
-std::pair<accept_handle, uint16_t>
+expected<std::pair<accept_handle, uint16_t>>
 default_multiplexer::new_tcp_doorman(uint16_t port, const char* in,
                                      bool reuse_addr) {
   auto res = new_tcp_acceptor_impl(port, in, reuse_addr);
-  return {accept_handle::from_int(int64_from_native_socket(res.first)),
-          res.second};
+  if (! res)
+    return std::move(res.error());
+  return std::make_pair(accept_handle::from_int(int64_from_native_socket(res->first)),
+                        res->second);
 }
 
-void default_multiplexer::assign_tcp_doorman(abstract_broker* ptr,
+expected<void> default_multiplexer::assign_tcp_doorman(abstract_broker* ptr,
                                              accept_handle hdl) {
   add_tcp_doorman(ptr, static_cast<native_socket>(hdl.id()));
+  return unit;
 }
 
-std::pair<accept_handle, uint16_t>
+expected<std::pair<accept_handle, uint16_t>>
 default_multiplexer::add_tcp_doorman(abstract_broker* self, uint16_t port,
                                      const char* host, bool reuse_addr) {
   auto acceptor = new_tcp_acceptor_impl(port, host, reuse_addr);
-  auto bound_port = acceptor.second;
-  return {add_tcp_doorman(self, acceptor.first), bound_port};
+  if (! acceptor)
+    return std::move(acceptor.error());
+  auto bound_port = acceptor->second;
+  return std::make_pair(add_tcp_doorman(self, acceptor->first), bound_port);
 }
 
 /******************************************************************************
@@ -975,10 +987,11 @@ resumable* pipe_reader::try_read_next() {
 
 void pipe_reader::handle_event(operation op) {
   CAF_LOG_TRACE(CAF_ARG(op));
+  auto mt = backend().system().config().scheduler_max_throughput;
   switch (op) {
     case operation::read: {
     auto cb = try_read_next();
-      switch (cb->resume(&backend(), backend().max_throughput())) {
+      switch (cb->resume(&backend(), mt)) {
         case resumable::resume_later:
           backend().exec_later(cb);
           break;
@@ -1061,12 +1074,13 @@ void stream::removed_from_loop(operation op) {
 
 void stream::handle_event(operation op) {
   CAF_LOG_TRACE(CAF_ARG(op));
+  auto mcr = backend().system().config().middleman_max_consecutive_reads;
   switch (op) {
     case operation::read: {
       // loop until an error occurs or we have nothing more to read
       // or until we have handled 50 reads
       size_t rb;
-      for (size_t i = 0; i < backend().max_consecutive_reads(); ++i) {
+      for (size_t i = 0; i < mcr; ++i) {
         if (! read_some(rb, fd(),
                         rd_buf_.data() + collected_,
                         rd_buf_.size() - collected_)) {
@@ -1276,14 +1290,15 @@ bool ip_connect(native_socket fd, const std::string& host, uint16_t port) {
   return connect(fd, reinterpret_cast<const sockaddr*>(&sa), sizeof(sa)) == 0;
 }
 
-native_socket new_tcp_connection(const std::string& host, uint16_t port,
-                                 optional<protocol> preferred) {
+expected<native_socket> new_tcp_connection(const std::string& host,
+                                           uint16_t port,
+                                           optional<protocol> preferred) {
   CAF_LOG_TRACE(CAF_ARG(host) << CAF_ARG(port) << CAF_ARG(preferred));
   CAF_LOG_INFO("try to connect to:" << CAF_ARG(host) << CAF_ARG(port));
   auto res = interfaces::native_address(host, preferred);
   if (! res) {
     CAF_LOG_INFO("no such host");
-    throw network_error("no such host: " + host);
+    return make_error(sec::cannot_connect_to_node, "no such host", host, port);
   }
   auto proto = res->second;
   CAF_ASSERT(proto == ipv4 || proto == ipv6);
@@ -1301,7 +1316,8 @@ native_socket new_tcp_connection(const std::string& host, uint16_t port,
   }
   if (! ip_connect<AF_INET>(fd, res->first, port)) {
     CAF_LOG_ERROR("could not connect to:" << CAF_ARG(host) << CAF_ARG(port));
-    throw network_error("could not connect to " + host);
+    return make_error(sec::cannot_connect_to_node,
+                      "ip_connect failed", host, port);
   }
   CAF_LOG_INFO("successfully connected to host via IPv4");
   return sguard.release();
@@ -1353,17 +1369,14 @@ uint16_t new_ip_acceptor_impl(native_socket fd, uint16_t port,
   return ntohs(port_of(sa));
 }
 
-std::pair<native_socket, uint16_t>
+expected<std::pair<native_socket, uint16_t>>
 new_tcp_acceptor_impl(uint16_t port, const char* addr, bool reuse_addr) {
   CAF_LOG_TRACE(CAF_ARG(port) << ", addr = " << (addr ? addr : "nullptr"));
   protocol proto = ipv6;
   if (addr) {
     auto addrs = interfaces::native_address(addr);
-    if (! addrs) {
-      std::string errmsg = "invalid IP address: ";
-      errmsg += addr;
-      throw network_error(errmsg);
-    }
+    if (! addrs)
+      return make_error(sec::cannot_open_port, "Invalid ADDR", addr);
     proto = addrs->second;
     CAF_ASSERT(proto == ipv4 || proto == ipv6);
   }
@@ -1382,7 +1395,7 @@ new_tcp_acceptor_impl(uint16_t port, const char* addr, bool reuse_addr) {
   ccall(cc_zero, "listen() failed", listen, fd, SOMAXCONN);
   // ok, no exceptions so far
   CAF_LOG_DEBUG(CAF_ARG(fd) << CAF_ARG(p));
-  return {sguard.release(), p};
+  return std::make_pair(sguard.release(), p);
 }
 
 std::string local_addr_of_fd(native_socket fd) {
